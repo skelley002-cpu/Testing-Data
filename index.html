@@ -1,0 +1,83 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1565c0"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Issues"><link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest"><title>Issue Logger</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:18px/1.4 system-ui,-apple-system,sans-serif;background:#f4f6f9;color:#111;padding-bottom:env(safe-area-inset-bottom)}
+header{background:#1565c0;color:#fff;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
+h1{font-size:22px;margin:0}h2{font-size:20px;margin:20px 16px 8px}
+button{font:inherit;border:0;border-radius:12px;cursor:pointer}
+.hb{background:#fff;color:#1565c0;padding:8px 14px;font-weight:600}
+#grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:16px}
+.big{min-height:110px;background:#1976d2;color:#fff;font-size:22px;font-weight:700;padding:10px;word-break:break-word;box-shadow:0 2px 6px #0003}
+.big span{display:block;font-size:30px;margin-top:4px;opacity:.95}
+#totals{list-style:none;margin:0 16px;padding:0;display:flex;flex-wrap:wrap;gap:8px}#totals li{background:#fff;border-radius:10px;padding:8px 12px;box-shadow:0 1px 3px #0002}
+.big:active{transform:scale(.97);background:#0d47a1}
+.ed{background:#fff;border-radius:12px;padding:10px;box-shadow:0 1px 4px #0002;display:flex;flex-direction:column;gap:8px}
+.ed b{font-size:20px;word-break:break-word}.ed div{display:flex;gap:6px;flex-wrap:wrap}
+.ed button,.sm{background:#e3eaf5;padding:10px 12px;font-size:16px}.del{background:#fde2e2!important;color:#b71c1c}
+.add{min-height:110px;border:3px dashed #1976d2;background:transparent;color:#1976d2;font-size:20px;font-weight:700}
+.bar{display:flex;gap:8px;padding:0 16px;flex-wrap:wrap}.bar button{flex:1;padding:14px;font-weight:600}
+.pri{background:#2e7d32;color:#fff}
+#hist{list-style:none;margin:8px 16px;padding:0}#hist li{background:#fff;border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+#hist small{color:#555;display:block}#hist a{color:#1565c0}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#222;color:#fff;padding:14px 22px;border-radius:30px;font-size:18px;opacity:0;transition:opacity .25s;pointer-events:none;text-align:center;max-width:90%}
+#toast.show{opacity:1}.empty{color:#666;padding:0 16px}
+</style></head><body>
+<header><h1>Issue Logger</h1><button class="hb" id="editBtn">Edit</button></header>
+<div id="grid"></div>
+<h2>Totals</h2><ul id="totals"></ul>
+<h2>History <span id="count"></span></h2>
+<div class="bar"><button class="pri" id="exportBtn">Export CSV</button><button class="sm del" id="clearBtn">Clear all</button></div>
+<ul id="hist"></ul><div id="toast"></div>
+<script>
+const KB='il_buttons',KE='il_entries',$=s=>document.querySelector(s);
+let buttons=JSON.parse(localStorage.getItem(KB)||'null')||['Pothole','Litter','Broken light','Other'];
+let entries=JSON.parse(localStorage.getItem(KE)||'[]');let edit=false;
+const save=()=>{localStorage.setItem(KB,JSON.stringify(buttons));localStorage.setItem(KE,JSON.stringify(entries))};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const p2=n=>String(n).padStart(2,'0');
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200)}
+function getPos(){return new Promise(r=>{if(!navigator.geolocation)return r(null);
+ navigator.geolocation.getCurrentPosition(p=>r(p.coords),()=>r(null),{enableHighAccuracy:true,timeout:10000,maximumAge:30000})})}
+async function log(name){const d=new Date();
+ const e={id:Date.now()+Math.random(),button:name,date:`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`,time:`${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`,lat:'',lon:'',acc:''};
+ entries.unshift(e);save();renderHist();toast(`✓ ${name} — ${e.time.slice(0,5)} (getting location…)`);
+ const c=await getPos();if(c){e.lat=c.latitude.toFixed(6);e.lon=c.longitude.toFixed(6);e.acc=Math.round(c.accuracy)}
+ save();renderHist();toast(`✓ ${name} logged ${e.time.slice(0,5)}${c?` ±${e.acc}m`:' (no location)'}`)}
+function renderGrid(){const g=$('#grid');g.innerHTML='';
+ buttons.forEach((b,i)=>{if(!edit){const x=document.createElement('button');x.className='big';x.innerHTML=`${esc(b)}<span>${tally()[b]||0}</span>`;x.onclick=()=>log(b);g.append(x)}
+  else{const x=document.createElement('div');x.className='ed';x.innerHTML=`<b>${esc(b)}</b><div><button data-a="up">▲</button><button data-a="dn">▼</button><button data-a="rn">Rename</button><button data-a="rm" class="del">Delete</button></div>`;
+   x.onclick=ev=>{const a=ev.target.dataset.a;if(!a)return;
+    if(a==='up'&&i>0)[buttons[i-1],buttons[i]]=[buttons[i],buttons[i-1]];
+    if(a==='dn'&&i<buttons.length-1)[buttons[i+1],buttons[i]]=[buttons[i],buttons[i+1]];
+    if(a==='rn'){const n=prompt('Rename button',b);if(n&&n.trim())buttons[i]=n.trim()}
+    if(a==='rm'&&confirm(`Delete button "${b}"? (History is kept)`))buttons.splice(i,1);
+    save();renderGrid()};g.append(x)}});
+ if(edit){const a=document.createElement('button');a.className='add';a.textContent='+ Add button';a.onclick=()=>{const n=prompt('New button name');if(n&&n.trim()){buttons.push(n.trim());save();renderGrid()}};g.append(a)}
+ $('#editBtn').textContent=edit?'Done':'Edit'}
+function tally(){const t={};entries.forEach(e=>t[e.button]=(t[e.button]||0)+1);return t}
+function totalsList(){const t=tally(),names=[...buttons];Object.keys(t).forEach(k=>{if(!names.includes(k))names.push(k)});return names.map(n=>[n,t[n]||0])}
+function renderTotals(){$('#totals').innerHTML=totalsList().map(([n,c])=>`<li><b>${esc(n)}</b>: ${c}</li>`).join('')+`<li><b>All</b>: ${entries.length}</li>`;if(!edit)renderGrid()}
+const mapUrl=e=>e.lat?`https://www.google.com/maps?q=${e.lat},${e.lon}`:'';
+function renderHist(){renderTotals();$('#count').textContent=`(${entries.length})`;const h=$('#hist');
+ if(!entries.length){h.innerHTML='<p class="empty">No entries yet.</p>';return}
+ h.innerHTML=entries.slice(0,100).map(e=>`<li><div><b>${esc(e.button)}</b><small>${e.date} ${e.time}${e.lat?` · <a href="${mapUrl(e)}" target="_blank">${e.lat}, ${e.lon}</a> ±${e.acc}m`:' · no location'}</small></div><button class="sm del" data-id="${e.id}">✕</button></li>`).join('')+(entries.length>100?`<p class="empty">…and ${entries.length-100} older (in export)</p>`:'')}
+$('#hist').onclick=ev=>{const id=ev.target.dataset.id;if(id&&confirm('Delete this entry?')){entries=entries.filter(e=>String(e.id)!==id);save();renderHist()}};
+$('#clearBtn').onclick=()=>{if(entries.length&&confirm(`Delete ALL ${entries.length} entries? This cannot be undone.`)){entries=[];save();renderHist()}};
+$('#editBtn').onclick=()=>{edit=!edit;renderGrid()};
+function csv(){const q=v=>{v=String(v??'');return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+ const rows=[['Button','Date','Time','Latitude','Longitude','Accuracy_m','Google Maps link']];
+ [...entries].reverse().forEach(e=>rows.push([e.button,e.date,e.time,e.lat,e.lon,e.acc,mapUrl(e)]));
+ rows.push([]);rows.push(['TOTALS','Count']);totalsList().forEach(([n,c])=>rows.push([n,c]));rows.push(['All',entries.length]);
+ return rows.map(r=>r.map(q).join(',')).join('\r\n')+'\r\n'}
+window.buildCSV=csv;
+$('#exportBtn').onclick=async()=>{if(!entries.length)return toast('Nothing to export');
+ const d=new Date(),name=`issues-${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}.csv`;
+ const blob=new Blob(['\ufeff'+csv()],{type:'text/csv'});
+ try{const f=new File([blob],name,{type:'text/csv'});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'Issue log'});return}}catch(err){if(err.name==='AbortError')return}
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);toast('CSV downloaded')};
+renderHist();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+</script></body></html>
